@@ -13,7 +13,7 @@ pub struct JournalFailureStreamer {
 
 impl JournalFailureStreamer {
     /// Create a new systemd journal streamer with the given filters
-    pub fn new(filter: HashMap<String, Regex>) -> anyhow::Result<Self> {
+    pub fn new(filter: HashMap<String, (Regex, usize)>) -> anyhow::Result<Self> {
         let units_of_interest: Vec<&str> = filter.keys().map(String::as_str).collect();
         let mut journal = journal::OpenOptions::default().system(true).open()?;
         // Go to the end of the journal and step back one entry
@@ -47,8 +47,9 @@ impl JournalFailureStreamer {
 
     fn ip_from_msg(&self, unit: &str, msg: &str) -> Option<IpAddr> {
         let (regex, group_idx) = self.filter.get(unit)?;
-        let caps = regex.captures(msg)?;
-        let ip_str = caps.get(*group_idx)?.as_str();
+        let caps = regex.captures(msg);
+        log::trace!("regex captures got: {caps:?}");
+        let ip_str = caps?.get(*group_idx)?.as_str();
         log::debug!("extracted IP address string: {ip_str}");
         ip_str.parse().ok()
     }

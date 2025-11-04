@@ -1,0 +1,13 @@
+[package]
+name = "logblock"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+const_format = "0.2"
+env_logger = "0.11"
+log = "0.4"
+nftables = "0.6"
+regex = "1"
+systemd = "0.10"
