@@ -3,9 +3,12 @@ use std::{collections::HashMap, net::IpAddr};
 use regex::Regex;
 use systemd::journal::{self, Journal, JournalSeek};
 
+/// Stream IPs from journal failure entries
 pub struct JournalFailureStreamer {
+    /// The systemd journal instance
     journal: Journal,
-    filter: HashMap<String, Regex>,
+    /// unit -> (regex to extract IP, match group index)
+    filter: HashMap<String, (Regex, usize)>,
 }
 
 impl JournalFailureStreamer {
@@ -43,9 +46,9 @@ impl JournalFailureStreamer {
     }
 
     fn ip_from_msg(&self, unit: &str, msg: &str) -> Option<IpAddr> {
-        let regex = self.filter.get(unit)?;
+        let (regex, group_idx) = self.filter.get(unit)?;
         let caps = regex.captures(msg)?;
-        let ip_str = caps.get(1)?.as_str();
+        let ip_str = caps.get(*group_idx)?.as_str();
         log::debug!("extracted IP address string: {ip_str}");
         ip_str.parse().ok()
     }
