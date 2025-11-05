@@ -16,6 +16,10 @@ fn main() {
         "ssh.service".to_string(),
         (regex::Regex::new(SSHD_PATTERN).unwrap(), 4),
     );
+    filters.insert(
+        "sshd.service".to_string(),
+        (regex::Regex::new(SSHD_PATTERN).unwrap(), 4),
+    );
     let mut streamer = journal::JournalFailureStreamer::new(filters).unwrap();
 
     loop {
