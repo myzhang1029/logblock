@@ -58,14 +58,20 @@ impl JournalFailureStreamer {
 impl Iterator for JournalFailureStreamer {
     type Item = anyhow::Result<IpAddr>;
 
+    /// Get the next matching IP address from the journal
+    /// This iterator should never end
     fn next(&mut self) -> Option<Self::Item> {
-        while let Ok((unit, msg)) = self.next_line() {
-            let Some(ip) = self.ip_from_msg(&unit, &msg) else {
-                log::debug!("no IP found in message: {msg}");
-                continue;
-            };
-            return Some(Ok(ip));
+        loop {
+            match self.next_line() {
+                Ok((unit, msg)) => {
+                    let Some(ip) = self.ip_from_msg(&unit, &msg) else {
+                        log::debug!("no IP found in message: {msg}");
+                        continue;
+                    };
+                    return Some(Ok(ip));
+                }
+                Err(e) => return Some(Err(e)),
+            }
         }
-        None
     }
 }
