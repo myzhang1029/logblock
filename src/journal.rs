@@ -59,7 +59,7 @@ impl JournalFailureStreamer {
                 continue;
             };
             log::trace!("journal entry match MESSAGE={message} UNIT={unit}");
-            let Some(ip) = self.ip_from_msg(&unit, &message) else {
+            let Some(ip) = self.ip_from_msg(unit, message) else {
                 log::debug!("no IP found in message: {message}");
                 continue;
             };
