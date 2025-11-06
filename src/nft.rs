@@ -39,7 +39,12 @@ pub fn init_tables() -> anyhow::Result<()> {
         name: SET4_NAME.into(),
         set_type: schema::SetTypeValue::Single(schema::SetType::Ipv4Addr),
         flags: Some(HashSet::from([schema::SetFlag::Interval])),
-        counter: Some(true),
+        stmt: Some(
+            vec![expr::Expression::Named(expr::NamedExpression::Counter(
+                None,
+            ))]
+            .into(),
+        ),
         auto_merge: Some(true),
         ..Default::default()
     })));
@@ -49,7 +54,12 @@ pub fn init_tables() -> anyhow::Result<()> {
         name: SET6_NAME.into(),
         set_type: schema::SetTypeValue::Single(schema::SetType::Ipv6Addr),
         flags: Some(HashSet::from([schema::SetFlag::Interval])),
-        counter: Some(true),
+        stmt: Some(
+            vec![expr::Expression::Named(expr::NamedExpression::Counter(
+                None,
+            ))]
+            .into(),
+        ),
         auto_merge: Some(true),
         ..Default::default()
     })));
@@ -69,7 +79,7 @@ pub fn init_tables() -> anyhow::Result<()> {
                 right: expr::Expression::String(format!("@{SET4_NAME}").into()),
                 op: stmt::Operator::IN,
             }),
-            stmt::Statement::Drop(Some(stmt::Drop {})),
+            stmt::Statement::Drop(None),
         ]
         .into(),
         ..Default::default()
@@ -89,7 +99,7 @@ pub fn init_tables() -> anyhow::Result<()> {
                 right: expr::Expression::String(format!("@{SET6_NAME}").into()),
                 op: stmt::Operator::IN,
             }),
-            stmt::Statement::Drop(Some(stmt::Drop {})),
+            stmt::Statement::Drop(None),
         ]
         .into(),
         ..Default::default()
