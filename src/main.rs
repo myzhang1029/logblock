@@ -1,5 +1,8 @@
 use const_format::concatcp;
-use std::{collections::HashMap, time::SystemTime};
+use std::{
+    collections::HashMap,
+    time::{Duration, SystemTime},
+};
 
 mod attack;
 mod journal;
@@ -13,9 +16,9 @@ const SSHD_PATTERN: &str = concatcp!(
 );
 
 const LIMIT_ATTEMPTS: u32 = 4;
-const ATTEMPT_WINDOW_SECS: u64 = 3600;
-const UNLOCK_TIME_SECS: u64 = 600;
-const CHECK_UNLOCK_INTERVAL_SECS: u64 = 60;
+const ATTEMPT_WINDOW: Duration = Duration::from_mins(60);
+const UNLOCK_TIME: Duration = Duration::from_mins(5);
+const CHECK_UNLOCK_INTERVAL: Duration = Duration::from_secs(60);
 
 fn main() -> anyhow::Result<()> {
     env_logger::init();
@@ -35,31 +38,34 @@ fn main() -> anyhow::Result<()> {
     nft::init_tables()?;
 
     loop {
-        let attack_ip = streamer.next().expect("Streamer should never end")?;
-        log::info!("Got attack IP: {attack_ip:?}");
-        let attacker_info = attackers
-            .entry(attack_ip)
-            .or_insert_with(|| attack::AttackerInfo::new(None));
-        log::debug!("attacker info: {attacker_info:?}");
-        let now = SystemTime::now();
-        let cutoff = now
-            .checked_sub(std::time::Duration::new(ATTEMPT_WINDOW_SECS, 0))
-            .expect("Ran out of representable time");
-        attacker_info.evict_old_attempts(cutoff);
-        let attempts = attacker_info.record_attempt();
-        if attempts >= LIMIT_ATTEMPTS {
-            log::info!("Blocking IP {attack_ip} after {attempts} attempts");
-            nft::block_ip(attack_ip)?;
+        if let Some(attack_ip) = streamer.next_match(Some(CHECK_UNLOCK_INTERVAL))? {
+            log::info!("Got attacker: {attack_ip}");
+            let attacker_info = attackers
+                .entry(attack_ip)
+                .or_insert_with(|| attack::AttackerInfo::new(None));
+            log::debug!("attacker info: {attacker_info:?}");
+            let now = SystemTime::now();
+            let cutoff = now
+                .checked_sub(ATTEMPT_WINDOW)
+                .expect("Ran out of representable time");
+            attacker_info.evict_old_attempts(cutoff);
+            let attempts = attacker_info.record_attempt();
+            if attempts >= LIMIT_ATTEMPTS {
+                log::info!("Blocking IP {attack_ip} after {attempts} attempts");
+                nft::block_ip(attack_ip)?;
+            }
         }
+
+        // After processing, or timing out, check for unlocks
+        let now = SystemTime::now();
         if now
             .duration_since(last_unlock_check)
             .expect("Time went backwards")
-            .as_secs()
-            >= CHECK_UNLOCK_INTERVAL_SECS
+            >= CHECK_UNLOCK_INTERVAL
         {
             log::debug!("checking for IPs to unlock");
             let unlock_cutoff = now
-                .checked_sub(std::time::Duration::new(UNLOCK_TIME_SECS, 0))
+                .checked_sub(UNLOCK_TIME)
                 .expect("Ran out of representable time");
             for (ip, info) in &attackers {
                 if info.last_seen < unlock_cutoff && info.attempts > LIMIT_ATTEMPTS {

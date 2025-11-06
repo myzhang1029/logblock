@@ -1,4 +1,4 @@
-use std::{collections::HashMap, net::IpAddr};
+use std::{collections::HashMap, net::IpAddr, time::Duration};
 
 use regex::Regex;
 use systemd::journal::{self, Journal, JournalSeek};
@@ -28,23 +28,6 @@ impl JournalFailureStreamer {
         Ok(Self { journal, filter })
     }
 
-    /// Get the next log line from the journal that matches the filters
-    pub fn next_line(&mut self) -> anyhow::Result<(String, String)> {
-        loop {
-            while let Some(entry) = self.journal.next_entry()? {
-                let Some(unit) = entry.get("_SYSTEMD_UNIT") else {
-                    continue;
-                };
-                let Some(message) = entry.get("MESSAGE") else {
-                    continue;
-                };
-                log::trace!("journal entry MESSAGE={message} UNIT={unit}",);
-                return Ok((unit.clone(), message.clone()));
-            }
-            self.journal.wait(None)?;
-        }
-    }
-
     fn ip_from_msg(&self, unit: &str, msg: &str) -> Option<IpAddr> {
         let (regex, group_idx) = self.filter.get(unit)?;
         let caps = regex.captures(msg);
@@ -53,25 +36,34 @@ impl JournalFailureStreamer {
         log::debug!("extracted IP address string: {ip_str}");
         ip_str.parse().ok()
     }
-}
-
-impl Iterator for JournalFailureStreamer {
-    type Item = anyhow::Result<IpAddr>;
 
     /// Get the next matching IP address from the journal
     /// This iterator should never end
-    fn next(&mut self) -> Option<Self::Item> {
+    pub fn next_match(
+        &mut self,
+        mut wait_limit: Option<Duration>,
+    ) -> anyhow::Result<Option<IpAddr>> {
+        let begin = std::time::Instant::now();
         loop {
-            match self.next_line() {
-                Ok((unit, msg)) => {
-                    let Some(ip) = self.ip_from_msg(&unit, &msg) else {
-                        log::debug!("no IP found in message: {msg}");
-                        continue;
-                    };
-                    return Some(Ok(ip));
-                }
-                Err(e) => return Some(Err(e)),
-            }
+            // Recompute remaining wait limit for this iteration
+            // If overflow occurs, peg to zero
+            wait_limit = wait_limit.map(|limit| limit.saturating_sub(begin.elapsed()));
+            let Some(entry) = self.journal.await_next_entry(wait_limit)? else {
+                // `await_next_entry` timed out
+                return Ok(None);
+            };
+            let Some(unit) = entry.get("_SYSTEMD_UNIT") else {
+                continue;
+            };
+            let Some(message) = entry.get("MESSAGE") else {
+                continue;
+            };
+            log::trace!("journal entry match MESSAGE={message} UNIT={unit}");
+            let Some(ip) = self.ip_from_msg(&unit, &message) else {
+                log::debug!("no IP found in message: {message}");
+                continue;
+            };
+            return Ok(Some(ip));
         }
     }
 }
