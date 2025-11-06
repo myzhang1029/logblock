@@ -12,8 +12,8 @@ const SSHD_PATTERN: &str = concatcp!(
     r") (port \d+ )?"
 );
 
-const LIMIT_ATTEMPTS: u32 = 5;
-const ATTEMPT_WINDOW_SECS: u64 = 300;
+const LIMIT_ATTEMPTS: u32 = 4;
+const ATTEMPT_WINDOW_SECS: u64 = 3600;
 const UNLOCK_TIME_SECS: u64 = 600;
 const CHECK_UNLOCK_INTERVAL_SECS: u64 = 60;
 
