@@ -47,7 +47,7 @@ fn main() -> anyhow::Result<()> {
             .expect("Ran out of representable time");
         attacker_info.evict_old_attempts(cutoff);
         let attempts = attacker_info.record_attempt();
-        if attempts > LIMIT_ATTEMPTS {
+        if attempts >= LIMIT_ATTEMPTS {
             log::info!("Blocking IP {attack_ip} after {attempts} attempts");
             nft::block_ip(attack_ip)?;
         }
