@@ -39,6 +39,8 @@ pub fn init_tables() -> anyhow::Result<()> {
         name: SET4_NAME.into(),
         set_type: schema::SetTypeValue::Single(schema::SetType::Ipv4Addr),
         flags: Some(HashSet::from([schema::SetFlag::Interval])),
+        counter: Some(true),
+        auto_merge: Some(true),
         ..Default::default()
     })));
     batch.add(schema::NfListObject::Set(Box::new(schema::Set {
@@ -47,6 +49,8 @@ pub fn init_tables() -> anyhow::Result<()> {
         name: SET6_NAME.into(),
         set_type: schema::SetTypeValue::Single(schema::SetType::Ipv6Addr),
         flags: Some(HashSet::from([schema::SetFlag::Interval])),
+        counter: Some(true),
+        auto_merge: Some(true),
         ..Default::default()
     })));
     // Input chain rule to drop packets from blocked IPs
