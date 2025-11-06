@@ -155,8 +155,6 @@ pub fn unblock_ip(ip: IpAddr) -> anyhow::Result<()> {
         }
     }
     let ruleset = batch.to_nftables();
-    helper::apply_ruleset(&ruleset).unwrap_or_else(|e| {
-        log::warn!("Failed to unblock IP {ip}: {e}");
-    });
+    helper::apply_ruleset(&ruleset)?;
     Ok(())
 }

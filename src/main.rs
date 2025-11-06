@@ -64,7 +64,9 @@ fn main() -> anyhow::Result<()> {
             for (ip, info) in &attackers {
                 if info.last_seen < unlock_cutoff && info.attempts > LIMIT_ATTEMPTS {
                     log::info!("Unblocking IP {ip} last seen at {:?}", info.last_seen);
-                    nft::unblock_ip(*ip)?;
+                    nft::unblock_ip(*ip).unwrap_or_else(|e| {
+                        log::warn!("Failed to unblock IP {ip}: {e}");
+                    });
                 }
             }
             last_unlock_check = now;
