@@ -7,7 +7,7 @@ mod nft;
 
 const IP_PATTERN: &str = r"[0-9\.:a-fA-F]+";
 const SSHD_PATTERN: &str = concatcp!(
-    r"(Connection closed by authenticating user|Failed password for( invalid user)?) \S+( from)? (",
+    r"(Connection closed by authenticating user|Invalid user|Failed password for( invalid user)?) \S+( from)? (",
     IP_PATTERN,
     r") (port \d+ )?"
 );
