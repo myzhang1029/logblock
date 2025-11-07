@@ -1,7 +1,8 @@
 use const_format::concatcp;
 use std::{
     collections::HashMap,
-    time::{Duration, SystemTime},
+    net::IpAddr,
+    time::{Duration, Instant},
 };
 
 mod attack;
@@ -33,7 +34,7 @@ fn main() -> anyhow::Result<()> {
     );
     let mut streamer = journal::JournalFailureStreamer::new(filters).unwrap();
     let mut attackers = HashMap::new();
-    let mut last_unlock_check = SystemTime::now();
+    let mut last_unlock_check = Instant::now();
 
     nft::init_tables()?;
 
@@ -44,38 +45,96 @@ fn main() -> anyhow::Result<()> {
                 .entry(attack_ip)
                 .or_insert_with(|| attack::AttackerInfo::new(None));
             log::debug!("attacker info: {attacker_info:?}");
-            let now = SystemTime::now();
+            let now = Instant::now();
             let cutoff = now
                 .checked_sub(ATTEMPT_WINDOW)
                 .expect("Ran out of representable time");
             attacker_info.evict_old_attempts(cutoff);
             let attempts = attacker_info.record_attempt();
-            if attempts >= LIMIT_ATTEMPTS {
+            if attempts != 0 && attempts % LIMIT_ATTEMPTS == 0 {
                 log::info!("Blocking IP {attack_ip} after {attempts} attempts");
-                nft::block_ip(attack_ip)?;
+                block_ip_or_reinit_tables(attack_ip, &attackers)?;
             }
         }
 
         // After processing, or timing out, check for unlocks
-        let now = SystemTime::now();
-        if now
-            .duration_since(last_unlock_check)
-            .expect("Time went backwards")
-            >= CHECK_UNLOCK_INTERVAL
-        {
+        if last_unlock_check.elapsed() >= CHECK_UNLOCK_INTERVAL {
             log::debug!("checking for IPs to unlock");
-            let unlock_cutoff = now
-                .checked_sub(UNLOCK_TIME)
-                .expect("Ran out of representable time");
-            for (ip, info) in &attackers {
-                if info.last_seen < unlock_cutoff && info.attempts > LIMIT_ATTEMPTS {
-                    log::info!("Unblocking IP {ip} last seen at {:?}", info.last_seen);
-                    nft::unblock_ip(*ip).unwrap_or_else(|e| {
-                        log::warn!("Failed to unblock IP {ip}: {e}");
-                    });
-                }
-            }
-            last_unlock_check = now;
+            check_and_unblock_ips(&attackers);
+            last_unlock_check = Instant::now();
         }
+    }
+}
+
+/// Calculate when an attacker can be unblocked
+/// Returns `None` if the attacker should not be blocked
+/// Returns `Some(Instant)` indicating when the attacker can be unblocked
+fn evaluate_attacker_unblock_time(info: &attack::AttackerInfo) -> Option<Instant> {
+    let attacker_level = info.attempts / LIMIT_ATTEMPTS;
+    if attacker_level == 0 {
+        return None;
+    }
+    // `unwrap`: checked above that attacker_level > 0
+    let attacker_unlock_duration =
+        UNLOCK_TIME.saturating_mul(1 << (attacker_level.checked_sub(1).unwrap()));
+    let cutoff = info
+        .last_seen
+        .checked_add(attacker_unlock_duration)
+        .expect("Ran out of representable time");
+    Some(cutoff)
+}
+
+/// Unblock all IPs that are eligible for unblocking
+fn check_and_unblock_ips(attackers: &HashMap<IpAddr, attack::AttackerInfo>) {
+    let now = Instant::now();
+    for (ip, info) in attackers {
+        let Some(cutoff) = evaluate_attacker_unblock_time(info) else {
+            continue;
+        };
+        if now >= cutoff {
+            log::info!("Unblocking IP {ip} last seen at {:?}", info.last_seen);
+            nft::unblock_ip(*ip).unwrap_or_else(|e| {
+                log::warn!("Failed to unblock IP {ip}: {e}");
+            });
+        }
+    }
+}
+
+/// Restore blocks for all attackers that should still be blocked
+fn restore_blocked_ips(attackers: &HashMap<IpAddr, attack::AttackerInfo>) -> anyhow::Result<()> {
+    let now = Instant::now();
+    for (ip, info) in attackers {
+        let Some(cutoff) = evaluate_attacker_unblock_time(info) else {
+            continue;
+        };
+        if now < cutoff {
+            log::info!(
+                "Restoring block for IP {ip} last seen at {:?}",
+                info.last_seen
+            );
+            nft::block_ip(*ip)?;
+        }
+    }
+    Ok(())
+}
+
+/// Try to block an IP, and if it fails due to nftables error, reinitialize tables and try again
+fn block_ip_or_reinit_tables(
+    ip: IpAddr,
+    attackers: &HashMap<IpAddr, attack::AttackerInfo>,
+) -> anyhow::Result<()> {
+    let Err(e) = nft::block_ip(ip) else {
+        return Ok(());
+    };
+    if let nftables::helper::NftablesError::NftFailed { hint, .. } = &e
+        && hint == "applying ruleset"
+    {
+        log::warn!("Got nftables error: {e}, reinitializing tables");
+        nft::init_tables()?;
+        restore_blocked_ips(attackers)?;
+        nft::block_ip(ip)?;
+        Ok(())
+    } else {
+        Err(e.into())
     }
 }
