@@ -11,7 +11,7 @@ const CHAIN_NAME: &str = "input";
 const SET4_NAME: &str = "logblock_v4";
 const SET6_NAME: &str = "logblock_v6";
 
-pub fn init_tables() -> anyhow::Result<()> {
+pub fn init_tables() -> Result<(), nftables::helper::NftablesError> {
     // Clean up any existing tables first
     uninit_tables().ok();
     let mut batch = Batch::new();
@@ -111,7 +111,7 @@ pub fn init_tables() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn uninit_tables() -> anyhow::Result<()> {
+pub fn uninit_tables() -> Result<(), nftables::helper::NftablesError> {
     let mut batch = Batch::new();
     batch.delete(schema::NfListObject::Table(schema::Table {
         family: types::NfFamily::INet,
@@ -123,7 +123,7 @@ pub fn uninit_tables() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn block_ip(ip: IpAddr) -> anyhow::Result<()> {
+pub fn block_ip(ip: IpAddr) -> Result<(), nftables::helper::NftablesError> {
     let mut batch = Batch::new();
     match ip {
         IpAddr::V4(ipv4) => {
@@ -148,7 +148,7 @@ pub fn block_ip(ip: IpAddr) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn unblock_ip(ip: IpAddr) -> anyhow::Result<()> {
+pub fn unblock_ip(ip: IpAddr) -> Result<(), nftables::helper::NftablesError> {
     let mut batch = Batch::new();
     match ip {
         IpAddr::V4(ipv4) => {
